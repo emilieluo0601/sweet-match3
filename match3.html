@@ -622,6 +622,7 @@ async function attemptSwap(r1, c1, r2, c2) {
     return;
   }
   await processMatches(matches, false);
+  await checkDeadlock();
   animating = false;
 }
 
@@ -776,6 +777,7 @@ async function doBookSwap(bookR, bookC, targetR, targetC, targetTile, fromSpecia
   // Cascade
   const newMatches = findAllMatches();
   if (newMatches.length > 0) await processMatches(newMatches, true);
+  await checkDeadlock();
   animating = false;
 }
 
@@ -915,6 +917,60 @@ function dedup(cells) {
     if (seen.has(key)) return false;
     seen.add(key); return true;
   });
+}
+
+// Check if any valid swap exists that produces a match
+function hasPossibleMove() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      // Try swap right
+      if (c + 1 < COLS) {
+        swapCells(r, c, r, c + 1);
+        const m = findAllMatches();
+        swapCells(r, c, r, c + 1);
+        if (m.length > 0) return true;
+      }
+      // Try swap down
+      if (r + 1 < ROWS) {
+        swapCells(r, c, r + 1, c);
+        const m = findAllMatches();
+        swapCells(r, c, r + 1, c);
+        if (m.length > 0) return true;
+      }
+    }
+  }
+  return false;
+}
+
+async function checkDeadlock() {
+  if (hasPossibleMove()) return;
+  // Show hint then reshuffle
+  const hint = document.createElement('div');
+  hint.textContent = '没有可消除的组合，正在重新洗牌… 🔀';
+  hint.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(192,57,90,0.92);color:#fff;padding:16px 28px;border-radius:16px;font-size:1rem;font-weight:bold;z-index:9999;text-align:center;';
+  document.body.appendChild(hint);
+  await sleep(1200);
+  document.body.removeChild(hint);
+  // Reshuffle non-special tiles
+  const positions = [];
+  const types = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (board[r][c] && !board[r][c].special) {
+        positions.push([r, c]);
+        types.push(board[r][c].type);
+      }
+    }
+  }
+  shuffleArr(types);
+  // Keep reshuffling until a valid move exists
+  let attempts = 0;
+  do {
+    shuffleArr(types);
+    positions.forEach(([r, c], i) => { board[r][c] = { type: types[i] }; });
+    attempts++;
+  } while (!hasPossibleMove() && attempts < 100);
+  renderBoard();
 }
 
 // ─────────────────────────────────────────────
