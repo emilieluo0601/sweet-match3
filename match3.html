@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>甜蜜旅途三消</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f4a0bb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="甜蜜三消">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --cell: 72px;
+    --gap: 3px;
+    --special-font: 2.6rem;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: linear-gradient(135deg, #ffe4ec 0%, #ffd6e8 50%, #ffe8f4 100%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: 'Segoe UI', sans-serif;
+    overflow-x: hidden;
+  }
+  h1 {
+    color: #c0395a;
+    font-size: 1.6rem;
+    margin: 14px 0 6px;
+    text-shadow: 1px 1px 3px rgba(255,150,180,0.5);
+    letter-spacing: 2px;
+  }
+  #game-wrapper {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-top: 6px;
+    padding: 0 8px 16px;
+  }
+  /* Board */
+  #board-area { display: flex; flex-direction: column; align-items: center; }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, var(--cell));
+    grid-template-rows: repeat(8, var(--cell));
+    gap: var(--gap);
+    background: rgba(255,255,255,0.55);
+    border: 3px solid #f4a0bb;
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: 0 6px 24px rgba(220,100,140,0.18);
+    touch-action: none;
+  }
+  .cell {
+    width: var(--cell); height: var(--cell);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    border: 2px solid transparent;
+    transition: transform 0.12s, border-color 0.12s;
+    background: #fff;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .cell:hover { transform: scale(1.06); border-color: #e05080; }
+  .cell.selected { border-color: #ff2060; box-shadow: 0 0 0 3px #ff206055; transform: scale(1.08); }
+  .cell.hint { animation: hintPulse 0.5s 3; }
+  @keyframes hintPulse {
+    0%,100% { box-shadow: none; }
+    50% { box-shadow: 0 0 0 4px #ffd700aa; }
+  }
+  .cell img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+  }
+  /* Special tiles */
+  .cell.special {
+    display: flex; align-items: center; justify-content: center;
+    font-size: var(--special-font);
+    background: linear-gradient(135deg, #fff0f5, #ffe0ee);
+    border: 2px solid #ffaacc;
+  }
+  /* Animations */
+  .cell.popping { animation: pop 0.32s ease-out forwards; }
+  @keyframes pop {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.6; }
+    100% { transform: scale(0); opacity: 0; }
+  }
+
+  /* Score info below board */
+  #score-bar {
+    margin-top: 8px;
+    background: rgba(255,255,255,0.7);
+    border-radius: 10px;
+    padding: 6px 16px;
+    font-size: 0.9rem;
+    color: #b03060;
+    display: flex; gap: 20px; align-items: center;
+  }
+  #score-bar span { font-weight: bold; font-size: 1rem; color: #c0395a; }
+
+  /* Right panel — desktop */
+  #side-panel {
+    width: 190px;
+    background: rgba(255,255,255,0.72);
+    border-radius: 16px;
+    border: 2px solid #f4a0bb;
+    padding: 16px 14px;
+    box-shadow: 0 4px 16px rgba(220,100,140,0.13);
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    flex-shrink: 0;
+  }
+  #side-panel h2 { color: #c0395a; font-size: 1rem; letter-spacing: 1px; }
+  #hearts-display {
+    display: flex; flex-direction: column; gap: 7px; width: 100%;
+  }
+  .level-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    background: rgba(255,220,235,0.4);
+    transition: background 0.3s;
+  }
+  .level-row.active { background: rgba(255,150,180,0.35); }
+  .level-row.completed { background: rgba(255,180,200,0.55); }
+  .level-heart { font-size: 1.5rem; transition: all 0.4s; }
+  .level-info { flex: 1; min-width: 0; }
+  .level-name { font-size: 0.78rem; color: #a03050; font-weight: bold; }
+  .level-pts { font-size: 0.7rem; color: #c07090; }
+  .progress-bar-wrap {
+    width: 100%; height: 8px;
+    background: #ffd6e8; border-radius: 4px; overflow: hidden;
+    margin-top: 3px;
+  }
+  .progress-bar-fill {
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, #ff80aa, #ff4070);
+    transition: width 0.5s;
+  }
+  #current-score-display {
+    font-size: 0.85rem; color: #b03060; text-align: center;
+    padding: 6px; background: rgba(255,200,220,0.4); border-radius: 8px; width: 100%;
+  }
+  #current-score-display strong { font-size: 1.2rem; color: #c0395a; }
+
+  /* Legend */
+  #legend {
+    margin-top: 4px; font-size: 0.72rem; color: #a03050;
+    background: rgba(255,220,235,0.5); border-radius: 8px; padding: 8px;
+    line-height: 1.65; width: 100%;
+  }
+  #legend b { color: #c0395a; }
+
+  /* Overlay / Modal */
+  #modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 100;
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #modal-overlay.show { display: flex; }
+  #modal-box {
+    background: linear-gradient(135deg, #fff0f8, #ffe0ee);
+    border-radius: 20px;
+    border: 3px solid #f4a0bb;
+    padding: 28px 28px;
+    text-align: center;
+    width: 100%; max-width: 320px;
+    box-shadow: 0 8px 32px rgba(220,100,140,0.3);
+    animation: modalIn 0.3s ease-out;
+  }
+  @keyframes modalIn { from{transform:scale(0.7);opacity:0} to{transform:scale(1);opacity:1} }
+  #modal-box h2 { font-size: 1.4rem; color: #c0395a; margin-bottom: 12px; }
+  #modal-box p { color: #a03050; font-size: 0.95rem; margin-bottom: 18px; line-height: 1.7; white-space: pre-line; }
+  #modal-box button {
+    background: linear-gradient(135deg, #ff80aa, #ff4070);
+    color: white; border: none; border-radius: 20px;
+    padding: 10px 30px; font-size: 1rem; cursor: pointer;
+    box-shadow: 0 3px 10px rgba(255,64,112,0.35);
+    transition: transform 0.1s;
+  }
+  #modal-box button:active { transform: scale(0.96); }
+
+  /* Floating particles */
+  .particle {
+    position: fixed; pointer-events: none; z-index: 50;
+    font-size: 1.4rem; animation: floatUp 1s ease-out forwards;
+  }
+  @keyframes floatUp {
+    0% { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-90px) scale(0.4); opacity: 0; }
+  }
+
+  /* Label under board */
+  #level-label {
+    margin-top: 6px; font-size: 0.88rem; color: #c0395a; font-weight: bold;
+    letter-spacing: 1px;
+  }
+
+  /* ── MOBILE (≤ 600px) ── */
+  @media (max-width: 600px) {
+    :root {
+      --cell: calc((100vw - 44px) / 8);
+      --gap: 2px;
+      --special-font: 1.6rem;
+    }
+    h1 { font-size: 1.1rem; margin: 8px 0 4px; letter-spacing: 1px; }
+    #game-wrapper {
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 0 4px 20px;
+      width: 100%;
+    }
+    #board { padding: 4px; border-radius: 10px; }
+    #score-bar { font-size: 0.82rem; padding: 5px 12px; gap: 14px; }
+
+    /* Side panel goes below board, horizontal compact layout */
+    #side-panel {
+      width: calc(100vw - 8px);
+      max-width: 560px;
+      flex-direction: column;
+      padding: 10px 12px;
+      gap: 8px;
+    }
+    #side-panel h2 { font-size: 0.9rem; }
+    #hearts-display {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .level-row { flex: 1 1 calc(50% - 5px); min-width: 130px; padding: 4px 6px; }
+    .level-heart { font-size: 1.2rem; }
+    .level-name { font-size: 0.72rem; }
+    .level-pts { font-size: 0.64rem; }
+    #current-score-display { font-size: 0.8rem; }
+    #current-score-display strong { font-size: 1.1rem; }
+    #legend { font-size: 0.68rem; line-height: 1.6; }
+  }
+</style>
+</head>
+<body>
+<h1>💕 甜蜜旅途三消 💕</h1>
+
+<div id="game-wrapper">
+  <div id="board-area">
+    <div id="board"></div>
+    <div id="level-label">关卡 1 · 青梅竹马</div>
+    <div id="score-bar">
+      总分：<span id="total-score">0</span>
+      &nbsp;|&nbsp; 本次消除：<span id="combo-label">0</span>
+    </div>
+  </div>
+
+  <div id="side-panel">
+    <h2>💗 亲密度</h2>
+    <div id="current-score-display">积分<br><strong id="pts-display">0</strong></div>
+    <div id="hearts-display"></div>
+    <div id="legend">
+      <b>特殊道具：</b><br>
+      ❤️ 爱心：消除周围8格<br>
+      🗻 富士山：消除整行<br>
+      🌸 樱花：消除整列<br>
+      📖 课本：与任意交换→消除全部同类；两书互换→清空全场
+    </div>
+  </div>
+</div>
+
+<div id="modal-overlay">
+  <div id="modal-box">
+    <h2 id="modal-title">🎉</h2>
+    <p id="modal-text"></p>
+    <button id="modal-btn" onclick="closeModal()">继续</button>
+    <button id="modal-restart-btn" onclick="resetGame()" style="display:none;margin-left:12px;background:linear-gradient(135deg,#aaa,#888);">重新开始</button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIGURATION
+// ─────────────────────────────────────────────
+const COLS = 8, ROWS = 8;
+const IMG_BASE = 'Match-3/';
+
+// Each tile: { id, src, cropY (% top), label }
+// cropY: object-position top% to show faces
+const TILE_TYPES = [
+  { id: 'asu',        src: 'Asu Vacano.jpg',   cropY: '20%', label: 'Asu Vacano' },
+  { id: 'sea',        src: 'By the sea.jpg',   cropY: '15%', label: 'By the Sea' },
+  { id: 'hs',         src: 'High school.jpg',  cropY: '18%', label: 'High school' },
+  { id: 'japan',      src: 'Japan .jpg',       cropY: '22%', label: 'Japan' },
+  { id: 'fuji',       src: 'Mount Fuji.jpg',   cropY: '25%', label: 'Mount Fuji' },
+  { id: 'nightsakura',src: 'Night Sakura.jpg', cropY: '12%', label: 'Night Sakura' },
+  { id: 'piccaque',   src: 'Piccaque.jpg',     cropY: '10%', label: 'Piccaque' },
+];
+
+// Only use 8 tile types per board (randomly chosen each game but consistent)
+// Special power-up generation rules
+// fuji -> 🗻 row clear; hs -> 📖 textbook; nightsakura -> 🌸 col clear; any4 -> ❤️
+
+const LEVELS = [
+  { name: '青梅竹马', pts: 300,  heart: '🤍', heartActive: '💗' },
+  { name: '日久生情', pts: 700,  heart: '💗', heartActive: '💕' },
+  { name: '渐入佳境', pts: 1300, heart: '💕', heartActive: '❤️' },
+  { name: '耳鬓厮磨', pts: 2200, heart: '❤️', heartActive: '💓' },
+  { name: '相濡以沫', pts: 3500, heart: '💓', heartActive: '💞' },
+];
+
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+let board = [];          // ROWS x COLS: null | { type, special }
+let selected = null;     // {r,c}
+let totalScore = 0;
+let currentLevel = 0;
+let animating = false;
+let activeTileTypes = [];
+
+// special types: 'heart', 'fuji', 'sakura', 'book'
+const SPECIAL_EMOJI = { heart:'❤️', fuji:'🗻', sakura:'🌸', book:'📖' };
+
+// ─────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────
+function init() {
+  activeTileTypes = [...TILE_TYPES]; // use all 7 tiles
+  board = [];
+  for (let r = 0; r < ROWS; r++) {
+    board[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      board[r][c] = randomTile();
+    }
+  }
+  // Prevent initial matches
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      let tries = 0;
+      while (hasMatchAt(r, c) && tries < 20) {
+        board[r][c] = randomTile();
+        tries++;
+      }
+    }
+  }
+  selected = null;
+  renderBoard();
+  renderSidePanel();
+}
+
+function randomTile() {
+  return { type: activeTileTypes[Math.floor(Math.random() * activeTileTypes.length)].id, special: null };
+}
+
+// ─────────────────────────────────────────────
+//  RENDER BOARD
+// ─────────────────────────────────────────────
+function renderBoard() {
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      const tile = board[r][c];
+      if (tile) {
+        if (tile.special) {
+          cell.classList.add('special');
+          cell.textContent = SPECIAL_EMOJI[tile.special];
+        } else {
+          const tinfo = TILE_TYPES.find(t => t.id === tile.type);
+          if (tinfo) {
+            const img = document.createElement('img');
+            img.src = IMG_BASE + tinfo.src;
+            img.style.objectPosition = `center ${tinfo.cropY}`;
+            if (tinfo.scale) {
+              img.style.transform = `scale(${tinfo.scale}) translateY(${tinfo.translateY || '0%'})`;
+              img.style.transformOrigin = 'center top';
+            }
+            img.draggable = false;
+            cell.appendChild(img);
+          }
+        }
+      }
+      if (selected && selected.r === r && selected.c === c) cell.classList.add('selected');
+      cell.addEventListener('click', () => onCellClick(r, c));
+      // Touch swipe support
+      cell.addEventListener('touchstart', onTouchStart, { passive: true });
+      cell.addEventListener('touchend', onTouchEnd, { passive: true });
+      boardEl.appendChild(cell);
+    }
+  }
+}
+
+function getCellEl(r, c) {
+  return document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+}
+
+// ─────────────────────────────────────────────
+//  SIDE PANEL
+// ─────────────────────────────────────────────
+function renderSidePanel() {
+  document.getElementById('pts-display').textContent = totalScore;
+  const hd = document.getElementById('hearts-display');
+  hd.innerHTML = '';
+  LEVELS.forEach((lv, i) => {
+    const row = document.createElement('div');
+    row.className = 'level-row' + (i < currentLevel ? ' completed' : i === currentLevel ? ' active' : '');
+    const prevPts = i === 0 ? 0 : LEVELS[i-1].pts;
+    const myPts = lv.pts;
+    const filled = i < currentLevel ? 1 : (i === currentLevel ? Math.min(1,(totalScore - prevPts)/(myPts - prevPts)) : 0);
+    const heart = i < currentLevel ? lv.heartActive : (i === currentLevel ? lv.heartActive : lv.heart);
+    row.innerHTML = `
+      <div class="level-heart">${heart}</div>
+      <div class="level-info">
+        <div class="level-name">Lv${i+1} ${lv.name}</div>
+        <div class="level-pts">${lv.pts} 分解锁</div>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${Math.max(0,filled*100)}%"></div></div>
+      </div>`;
+    hd.appendChild(row);
+  });
+  document.getElementById('level-label').textContent = `关卡 ${currentLevel+1} · ${LEVELS[currentLevel].name}`;
+}
+
+// ─────────────────────────────────────────────
+//  MATCH DETECTION
+// ─────────────────────────────────────────────
+function hasMatchAt(r, c) {
+  const t = board[r][c];
+  if (!t || t.special) return false;
+  const id = t.type;
+  // horizontal
+  if (c >= 2 && board[r][c-1] && board[r][c-1].type === id && !board[r][c-1].special &&
+                board[r][c-2] && board[r][c-2].type === id && !board[r][c-2].special) return true;
+  if (c <= COLS-3 && board[r][c+1] && board[r][c+1].type === id && !board[r][c+1].special &&
+                     board[r][c+2] && board[r][c+2].type === id && !board[r][c+2].special) return true;
+  if (c >= 1 && c <= COLS-2 && board[r][c-1] && board[r][c-1].type === id && !board[r][c-1].special &&
+                                board[r][c+1] && board[r][c+1].type === id && !board[r][c+1].special) return true;
+  // vertical
+  if (r >= 2 && board[r-1][c] && board[r-1][c].type === id && !board[r-1][c].special &&
+                board[r-2][c] && board[r-2][c].type === id && !board[r-2][c].special) return true;
+  if (r <= ROWS-3 && board[r+1][c] && board[r+1][c].type === id && !board[r+1][c].special &&
+                     board[r+2][c] && board[r+2][c].type === id && !board[r+2][c].special) return true;
+  if (r >= 1 && r <= ROWS-2 && board[r-1][c] && board[r-1][c].type === id && !board[r-1][c].special &&
+                                board[r+1][c] && board[r+1][c].type === id && !board[r+1][c].special) return true;
+  return false;
+}
+
+// Returns array of {r,c} cells in all matches
+function findAllMatches() {
+  const matched = new Set();
+  const mark = (r,c) => matched.add(`${r},${c}`);
+  // Horizontal
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS-2; c++) {
+      const t = board[r][c];
+      if (!t || t.special) continue;
+      if (sameNormal(r,c,r,c+1) && sameNormal(r,c,r,c+2)) {
+        let len = 3;
+        while (c+len < COLS && sameNormal(r,c,r,c+len)) len++;
+        for (let k=0;k<len;k++) mark(r,c+k);
+        c += len-1;
+      }
+    }
+  }
+  // Vertical
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < ROWS-2; r++) {
+      const t = board[r][c];
+      if (!t || t.special) continue;
+      if (sameNormal(r,c,r+1,c) && sameNormal(r,c,r+2,c)) {
+        let len = 3;
+        while (r+len < ROWS && sameNormal(r,c,r+len,c)) len++;
+        for (let k=0;k<len;k++) mark(r+k,c);
+        r += len-1;
+      }
+    }
+  }
+  return [...matched].map(s => { const [r,c] = s.split(',').map(Number); return {r,c}; });
+}
+
+function sameNormal(r1,c1,r2,c2) {
+  const a = board[r1][c1], b = board[r2][c2];
+  return a && b && !a.special && !b.special && a.type === b.type;
+}
+
+// ─────────────────────────────────────────────
+//  TOUCH SWIPE
+// ─────────────────────────────────────────────
+let touchStartX = 0, touchStartY = 0, touchStartR = -1, touchStartC = -1;
+
+function onTouchStart(e) {
+  const touch = e.touches[0];
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+  const cell = e.currentTarget;
+  touchStartR = parseInt(cell.dataset.r);
+  touchStartC = parseInt(cell.dataset.c);
+}
+
+function onTouchEnd(e) {
+  if (animating) return;
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - touchStartX;
+  const dy = touch.clientY - touchStartY;
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  const threshold = 18;
+  if (absDx < threshold && absDy < threshold) {
+    // Treat as tap/click
+    onCellClick(touchStartR, touchStartC);
+    return;
+  }
+  let tr = touchStartR, tc = touchStartC;
+  if (absDx > absDy) { tc += dx > 0 ? 1 : -1; }
+  else               { tr += dy > 0 ? 1 : -1; }
+  if (tr < 0 || tr >= ROWS || tc < 0 || tc >= COLS) return;
+  selected = null;
+  attemptSwap(touchStartR, touchStartC, tr, tc);
+}
+
+// ─────────────────────────────────────────────
+//  CLICK / SWAP
+// ─────────────────────────────────────────────
+function onCellClick(r, c) {
+  if (animating) return;
+  const tile = board[r][c];
+  if (!tile) return;
+
+  if (!selected) {
+    selected = {r, c};
+    renderBoard();
+    return;
+  }
+  if (selected.r === r && selected.c === c) {
+    selected = null;
+    renderBoard();
+    return;
+  }
+  const dr = Math.abs(r - selected.r), dc = Math.abs(c - selected.c);
+  if (dr + dc !== 1) {
+    // Not adjacent — reselect
+    selected = {r, c};
+    renderBoard();
+    return;
+  }
+  const from = selected;
+  selected = null;
+  renderBoard();
+  attemptSwap(from.r, from.c, r, c);
+}
+
+async function attemptSwap(r1, c1, r2, c2) {
+  animating = true;
+  const tileA = board[r1][c1];
+  const tileB = board[r2][c2];
+
+  // Book special: book + any, or book + book
+  if (tileA && tileA.special === 'book') {
+    await doBookSwap(r1,c1, r2,c2, tileB, false);
+    animating = false;
+    return;
+  }
+  if (tileB && tileB.special === 'book') {
+    await doBookSwap(r2,c2, r1,c1, tileA, false);
+    animating = false;
+    return;
+  }
+
+  // Normal swap
+  swapCells(r1,c1,r2,c2);
+  renderBoard();
+  await sleep(180);
+
+  const matches = findAllMatches();
+  if (matches.length === 0) {
+    // Swap back
+    swapCells(r1,c1,r2,c2);
+    renderBoard();
+    animating = false;
+    return;
+  }
+  await processMatches(matches, false);
+  animating = false;
+}
+
+function swapCells(r1,c1,r2,c2) {
+  const tmp = board[r1][c1];
+  board[r1][c1] = board[r2][c2];
+  board[r2][c2] = tmp;
+}
+
+// ─────────────────────────────────────────────
+//  PROCESS MATCHES (cascading)
+// ─────────────────────────────────────────────
+async function processMatches(matches, fromSpecial) {
+  while (matches.length > 0) {
+    // Group by connected match to find big matches (4+)
+    // Detect power-ups before removal
+    const powerUpsToCreate = [];
+    if (!fromSpecial) {
+      // Find horizontal/vertical runs of 4+ for power-up creation
+      const runs = findRuns();
+      runs.forEach(run => {
+        if (run.cells.length >= 4) {
+          const type = run.cells[0];
+          const tile = board[type.r][type.c];
+          if (!tile || tile.special) return;
+          const tileId = tile.type;
+          const pos = run.cells[Math.floor(run.cells.length/2)]; // place at center
+          let sp = null;
+          if (tileId === 'fuji') sp = 'fuji';
+          else if (tileId === 'hs') sp = 'book';
+          else if (tileId === 'nightsakura') sp = 'sakura';
+          else sp = 'heart';
+          powerUpsToCreate.push({ r: pos.r, c: pos.c, sp });
+        }
+      });
+    }
+
+    // Trigger special adjacencies BEFORE popping
+    const extraCells = triggerSpecials(matches);
+    const allToRemove = dedup([...matches, ...extraCells]);
+
+    // Animate pop
+    allToRemove.forEach(({r,c}) => {
+      const el = getCellEl(r,c);
+      if (el) el.classList.add('popping');
+    });
+    await sleep(320);
+
+    // Score
+    const pts = allToRemove.length * 10;
+    totalScore += pts;
+    document.getElementById('total-score').textContent = totalScore;
+    document.getElementById('combo-label').textContent = allToRemove.length;
+    spawnParticles(allToRemove);
+
+    // Remove matched cells
+    allToRemove.forEach(({r,c}) => { board[r][c] = null; });
+
+    // Place power-ups at their positions (only if not fromSpecial and cell was removed)
+    powerUpsToCreate.forEach(({r,c,sp}) => {
+      if (!board[r][c]) { board[r][c] = { type: null, special: sp }; }
+    });
+
+    // Fall down
+    dropTiles();
+    fillEmpty();
+    renderBoard();
+    await sleep(220);
+
+    checkLevelUp();
+    renderSidePanel();
+
+    // Find new matches
+    matches = findAllMatches();
+    fromSpecial = false;
+  }
+}
+
+function triggerSpecials(matches) {
+  const extra = [];
+  const matchSet = new Set(matches.map(({r,c})=>`${r},${c}`));
+
+  // For each matched cell, check adjacent for specials
+  matches.forEach(({r,c}) => {
+    const neighbors = [[r-1,c],[r+1,c],[r,c-1],[r,c+1],[r-1,c-1],[r-1,c+1],[r+1,c-1],[r+1,c+1]];
+    neighbors.forEach(([nr,nc]) => {
+      if (nr<0||nr>=ROWS||nc<0||nc>=COLS) return;
+      if (matchSet.has(`${nr},${nc}`)) return; // already being removed
+      const t = board[nr][nc];
+      if (!t || !t.special) return;
+      if (t.special === 'heart') {
+        // 8 cells around the heart
+        for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++) {
+          if (dr===0&&dc===0) continue;
+          const rr=nr+dr, cc=nc+dc;
+          if (rr>=0&&rr<ROWS&&cc>=0&&cc<COLS) extra.push({r:rr,c:cc});
+        }
+        extra.push({r:nr,c:nc});
+      } else if (t.special === 'fuji') {
+        // entire row
+        for (let k=0;k<COLS;k++) extra.push({r:nr,c:k});
+      } else if (t.special === 'sakura') {
+        // entire column
+        for (let k=0;k<ROWS;k++) extra.push({r:k,c:nc});
+      }
+      // book is handled at swap time
+    });
+  });
+  return extra;
+}
+
+// ─────────────────────────────────────────────
+//  BOOK SWAP
+// ─────────────────────────────────────────────
+async function doBookSwap(bookR, bookC, targetR, targetC, targetTile, fromSpecial) {
+  animating = true;
+  let cellsToRemove = [];
+
+  if (targetTile && targetTile.special === 'book') {
+    // Two books: clear entire board
+    for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) cellsToRemove.push({r,c});
+  } else if (targetTile && !targetTile.special) {
+    // Book + normal: remove all tiles of targetTile.type
+    const ttype = targetTile.type;
+    for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
+      if (board[r][c] && board[r][c].type === ttype) cellsToRemove.push({r,c});
+    }
+    cellsToRemove.push({r:bookR,c:bookC}); // remove the book too
+  } else {
+    animating = false;
+    return;
+  }
+
+  cellsToRemove = dedup(cellsToRemove);
+  cellsToRemove.forEach(({r,c}) => { const el=getCellEl(r,c); if(el) el.classList.add('popping'); });
+  await sleep(320);
+
+  const pts = cellsToRemove.length * 10;
+  totalScore += pts;
+  document.getElementById('total-score').textContent = totalScore;
+  spawnParticles(cellsToRemove);
+
+  cellsToRemove.forEach(({r,c}) => { board[r][c] = null; });
+  dropTiles();
+  fillEmpty();
+  renderBoard();
+  await sleep(220);
+
+  checkLevelUp();
+  renderSidePanel();
+
+  // Cascade
+  const newMatches = findAllMatches();
+  if (newMatches.length > 0) await processMatches(newMatches, true);
+  animating = false;
+}
+
+// ─────────────────────────────────────────────
+//  GRAVITY & FILL
+// ─────────────────────────────────────────────
+function dropTiles() {
+  for (let c=0;c<COLS;c++) {
+    let empty = ROWS-1;
+    for (let r=ROWS-1;r>=0;r--) {
+      if (board[r][c]) {
+        if (empty !== r) { board[empty][c] = board[r][c]; board[r][c] = null; }
+        empty--;
+      }
+    }
+  }
+}
+
+function fillEmpty() {
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
+    if (!board[r][c]) board[r][c] = randomTile();
+  }
+}
+
+// ─────────────────────────────────────────────
+//  LEVEL UP
+// ─────────────────────────────────────────────
+function checkLevelUp() {
+  while (currentLevel < LEVELS.length && totalScore >= LEVELS[currentLevel].pts) {
+    const lv = LEVELS[currentLevel];
+    if (currentLevel < LEVELS.length - 1) {
+      showModal(`🎉 恭喜！`, `恭喜，你们的亲密度增加啦！\n解锁成就：${LEVELS[currentLevel+1]?.name || lv.name}`);
+    } else {
+      showModal(`💞 最终成就`, `恭喜，你们会相伴到老😊\n\n已解锁全部亲密度成就！`, true);
+    }
+    currentLevel = Math.min(currentLevel + 1, LEVELS.length - 1);
+    if (currentLevel >= LEVELS.length - 1 && totalScore >= LEVELS[LEVELS.length-1].pts) break;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  RUN FINDER (for power-up generation)
+// ─────────────────────────────────────────────
+function findRuns() {
+  const runs = [];
+  // Horizontal runs
+  for (let r=0;r<ROWS;r++) {
+    let c=0;
+    while(c<COLS) {
+      const t = board[r][c];
+      if (!t || t.special) { c++; continue; }
+      let len=1;
+      while(c+len<COLS && sameNormal(r,c,r,c+len)) len++;
+      if (len>=3) {
+        const cells=[];
+        for(let k=0;k<len;k++) cells.push({r,c:c+k});
+        runs.push({cells, dir:'h'});
+      }
+      c+=len;
+    }
+  }
+  // Vertical runs
+  for (let c=0;c<COLS;c++) {
+    let r=0;
+    while(r<ROWS) {
+      const t = board[r][c];
+      if (!t || t.special) { r++; continue; }
+      let len=1;
+      while(r+len<ROWS && sameNormal(r,c,r+len,c)) len++;
+      if (len>=3) {
+        const cells=[];
+        for(let k=0;k<len;k++) cells.push({r:r+k,c});
+        runs.push({cells, dir:'v'});
+      }
+      r+=len;
+    }
+  }
+  return runs;
+}
+
+// ─────────────────────────────────────────────
+//  MODAL
+// ─────────────────────────────────────────────
+function showModal(title, text, showRestart = false) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-text').textContent = text;
+  const restartBtn = document.getElementById('modal-restart-btn');
+  restartBtn.style.display = showRestart ? 'inline-block' : 'none';
+  document.getElementById('modal-overlay').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('show');
+}
+
+function resetGame() {
+  closeModal();
+  totalScore = 0;
+  currentLevel = 0;
+  animating = false;
+  selected = null;
+  document.getElementById('total-score').textContent = '0';
+  document.getElementById('combo-label').textContent = '0';
+  init();
+}
+
+// ─────────────────────────────────────────────
+//  PARTICLES
+// ─────────────────────────────────────────────
+function spawnParticles(cells) {
+  const emojis = ['💕','✨','🌸','⭐','💫','❤️'];
+  cells.slice(0,5).forEach(({r,c}) => {
+    const el = getCellEl(r,c);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+    p.style.left = (rect.left + rect.width/2) + 'px';
+    p.style.top = rect.top + 'px';
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 1000);
+  });
+}
+
+// ─────────────────────────────────────────────
+//  UTILS
+// ─────────────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function shuffleArr(arr) {
+  for (let i=arr.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
+  return arr;
+}
+function dedup(cells) {
+  const seen = new Set();
+  return cells.filter(({r,c}) => {
+    const key = `${r},${c}`;
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+}
+
+// ─────────────────────────────────────────────
+//  START
+// ─────────────────────────────────────────────
+init();
+
+// Register Service Worker for PWA offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
