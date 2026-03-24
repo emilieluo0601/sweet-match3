@@ -4,6 +4,39 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>甜蜜旅途三消</title>
+<script>
+(function(){
+  const KEY = 'match3_auth';
+  const PWD = 'iloveemilie';
+  if(sessionStorage.getItem(KEY) !== 'ok'){
+    document.addEventListener('DOMContentLoaded', function(){
+      document.body.innerHTML = '';
+      document.body.style.cssText = 'margin:0;background:linear-gradient(135deg,#ffe4ec,#ffd6e8,#ffe8f4);min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif;';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#fff;border-radius:24px;padding:40px 36px;box-shadow:0 8px 32px rgba(192,57,90,0.15);text-align:center;max-width:320px;width:90%;';
+      box.innerHTML = `
+        <div style="font-size:3rem;margin-bottom:12px;">💕</div>
+        <h2 style="color:#c0395a;margin-bottom:8px;font-size:1.4rem;">甜蜜旅途三消</h2>
+        <p style="color:#e07090;font-size:0.85rem;margin-bottom:24px;">请输入密码进入游戏</p>
+        <input id="pwd" type="password" placeholder="请输入密码"
+          style="width:100%;padding:12px 16px;border:2px solid #f4a0bb;border-radius:12px;font-size:1rem;outline:none;text-align:center;color:#c0395a;background:#fff0f5;"
+          onkeydown="if(event.key==='Enter')document.getElementById('enter').click()">
+        <div id="err" style="color:#e05070;font-size:0.8rem;margin-top:8px;min-height:18px;"></div>
+        <button id="enter"
+          style="margin-top:12px;width:100%;padding:12px;background:linear-gradient(135deg,#f4a0bb,#e07090);color:#fff;border:none;border-radius:12px;font-size:1rem;cursor:pointer;font-weight:bold;"
+          onclick="(function(){var v=document.getElementById('pwd').value;if(v==='${PWD}'){sessionStorage.setItem('${KEY}','ok');location.reload();}else{document.getElementById('err').textContent='密码错误，请重试 ❌';document.getElementById('pwd').value='';document.getElementById('pwd').focus();}})()">
+          进入 →
+        </button>
+      `;
+      document.body.appendChild(box);
+      setTimeout(()=>document.getElementById('pwd').focus(),100);
+    });
+    document.addEventListener('DOMContentLoaded',function(){},true);
+    // Block body render before DOMContentLoaded
+    const origWrite = document.write;
+  }
+})();
+</script>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f4a0bb">
 <meta name="apple-mobile-web-app-capable" content="yes">
