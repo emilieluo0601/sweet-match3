@@ -361,6 +361,14 @@ let activeTileTypes = [];
 // special types: 'heart', 'fuji', 'sakura', 'book'
 const SPECIAL_EMOJI = { heart:'❤️', fuji:'🗻', sakura:'🌸', book:'📖' };
 
+// Preload all images so they're cached before the game starts
+const IMAGE_CACHE = {};
+TILE_TYPES.forEach(t => {
+  const img = new Image();
+  img.src = IMG_BASE + t.src;
+  IMAGE_CACHE[t.id] = img;
+});
+
 // ─────────────────────────────────────────────
 //  INIT
 // ─────────────────────────────────────────────
@@ -397,39 +405,65 @@ function randomTile() {
 // ─────────────────────────────────────────────
 function renderBoard() {
   const boardEl = document.getElementById('board');
-  boardEl.innerHTML = '';
+
+  // First render: build all cells from scratch
+  if (boardEl.children.length !== ROWS * COLS) {
+    boardEl.innerHTML = '';
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        cell.addEventListener('click', () => onCellClick(r, c));
+        cell.addEventListener('touchstart', onTouchStart, { passive: true });
+        cell.addEventListener('touchend', onTouchEnd, { passive: true });
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  // Incremental update: only change cells that differ
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      cell.dataset.r = r;
-      cell.dataset.c = c;
+      const cell = boardEl.children[r * COLS + c];
       const tile = board[r][c];
-      if (tile) {
-        if (tile.special) {
-          cell.classList.add('special');
-          cell.textContent = SPECIAL_EMOJI[tile.special];
-        } else {
-          const tinfo = TILE_TYPES.find(t => t.id === tile.type);
-          if (tinfo) {
-            const img = document.createElement('img');
-            img.src = IMG_BASE + tinfo.src;
-            img.style.objectPosition = `center ${tinfo.cropY}`;
-            if (tinfo.scale) {
-              img.style.transform = `scale(${tinfo.scale}) translateY(${tinfo.translateY || '0%'})`;
-              img.style.transformOrigin = 'center top';
-            }
-            img.draggable = false;
-            cell.appendChild(img);
+
+      // Compute what content key this cell should have
+      const newKey = tile
+        ? (tile.special ? `special:${tile.special}` : `tile:${tile.type}`)
+        : 'empty';
+      const selKey = (selected && selected.r === r && selected.c === c) ? 'sel' : '';
+      const fullKey = newKey + '|' + selKey;
+
+      if (cell.dataset.renderKey === fullKey) continue; // no change
+      cell.dataset.renderKey = fullKey;
+
+      // Update selected state
+      cell.classList.toggle('selected', !!(selected && selected.r === r && selected.c === c));
+
+      if (!tile) {
+        cell.classList.remove('special');
+        cell.textContent = '';
+        cell.style.backgroundImage = '';
+      } else if (tile.special) {
+        cell.classList.add('special');
+        cell.textContent = SPECIAL_EMOJI[tile.special];
+        cell.style.backgroundImage = '';
+      } else {
+        const tinfo = TILE_TYPES.find(t => t.id === tile.type);
+        cell.classList.remove('special');
+        cell.textContent = '';
+        if (tinfo) {
+          // Use background-image instead of <img> to avoid reload flicker
+          cell.style.backgroundImage = `url('${IMG_BASE}${encodeURIComponent(tinfo.src).replace(/%20/g,' ')}')`;
+          cell.style.backgroundSize = 'cover';
+          cell.style.backgroundPosition = `center ${tinfo.cropY}`;
+          if (tinfo.scale) {
+            cell.style.backgroundSize = `${tinfo.scale * 100}%`;
           }
         }
       }
-      if (selected && selected.r === r && selected.c === c) cell.classList.add('selected');
-      cell.addEventListener('click', () => onCellClick(r, c));
-      // Touch swipe support
-      cell.addEventListener('touchstart', onTouchStart, { passive: true });
-      cell.addEventListener('touchend', onTouchEnd, { passive: true });
-      boardEl.appendChild(cell);
     }
   }
 }
