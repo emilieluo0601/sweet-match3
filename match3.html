@@ -96,6 +96,8 @@
     border: 2px solid transparent;
     transition: transform 0.12s, border-color 0.12s;
     background: #fff;
+    background-size: cover;
+    background-repeat: no-repeat;
     user-select: none;
     -webkit-user-select: none;
   }
@@ -461,13 +463,8 @@ function renderBoard() {
         cell.classList.remove('special');
         cell.textContent = '';
         if (tinfo) {
-          // Use background-image instead of <img> to avoid reload flicker
           cell.style.backgroundImage = `url('${IMG_BASE}${encodeURIComponent(tinfo.src).replace(/%20/g,' ')}')`;
-          cell.style.backgroundSize = 'cover';
           cell.style.backgroundPosition = `center ${tinfo.cropY}`;
-          if (tinfo.scale) {
-            cell.style.backgroundSize = `${tinfo.scale * 100}%`;
-          }
         }
       }
     }
