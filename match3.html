@@ -949,14 +949,23 @@ function checkOutOfMoves() {
 }
 
 function spawnLockedTiles() {
-  // Place 3-5 random locked tiles on normal (non-special) cells
+  // Place 3-5 random locked tiles, ensuring at least one valid move remains
   const count = 3 + Math.floor(Math.random() * 3);
   const candidates = [];
   for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
     if (board[r][c] && !board[r][c].special && !board[r][c].locked) candidates.push([r,c]);
   }
   shuffleArr(candidates);
-  candidates.slice(0, count).forEach(([r,c]) => { board[r][c].locked = true; });
+  let placed = 0;
+  for (const [r,c] of candidates) {
+    if (placed >= count) break;
+    board[r][c].locked = true;
+    if (!hasPossibleMove()) {
+      board[r][c].locked = false; // this cell would cause deadlock, skip it
+    } else {
+      placed++;
+    }
+  }
   renderBoard();
 }
 
