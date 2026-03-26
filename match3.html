@@ -121,6 +121,19 @@
     background: linear-gradient(135deg, #fff0f5, #ffe0ee);
     border: 2px solid #ffaacc;
   }
+  /* Locked tiles */
+  .cell.locked::after {
+    content: '🔒';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    background: rgba(0,0,0,0.38);
+    border-radius: 7px;
+    pointer-events: none;
+  }
   /* Animations */
   .cell.popping { animation: pop 0.32s ease-out; }
   @keyframes pop {
@@ -292,7 +305,8 @@
     <div id="level-label">关卡 1 · 青梅竹马</div>
     <div id="score-bar">
       总分：<span id="total-score">0</span>
-      &nbsp;|&nbsp; 本次消除：<span id="combo-label">0</span>
+      &nbsp;|&nbsp; 步数：<span id="moves-left">30</span>
+      &nbsp;|&nbsp; 连击：<span id="combo-label">0</span>x
     </div>
   </div>
 
@@ -305,7 +319,8 @@
       ❤️ 爱心：消除周围8格<br>
       🗻 富士山：消除整行<br>
       🌸 樱花：消除整列<br>
-      📖 课本：与任意交换→消除全部同类；两书互换→清空全场
+      📖 课本：与任意交换→消除全部同类；两书互换→清空全场<br>
+      🔒 锁定：消除旁边图片可解锁
     </div>
   </div>
 </div>
@@ -316,6 +331,7 @@
     <p id="modal-text"></p>
     <button id="modal-btn" onclick="closeModal()">继续</button>
     <button id="modal-restart-btn" onclick="resetGame()" style="display:none;margin-left:12px;background:linear-gradient(135deg,#aaa,#888);">重新开始</button>
+    <button id="modal-retry-btn" onclick="retryLevel()" style="display:none;margin-left:12px;background:linear-gradient(135deg,#ff80aa,#ff4070);">再试一次</button>
   </div>
 </div>
 
@@ -343,22 +359,24 @@ const TILE_TYPES = [
 // fuji -> 🗻 row clear; hs -> 📖 textbook; nightsakura -> 🌸 col clear; any4 -> ❤️
 
 const LEVELS = [
-  { name: '青梅竹马', pts: 300,  heart: '🤍', heartActive: '💗' },
-  { name: '日久生情', pts: 700,  heart: '💗', heartActive: '💕' },
-  { name: '渐入佳境', pts: 1300, heart: '💕', heartActive: '❤️' },
-  { name: '耳鬓厮磨', pts: 2200, heart: '❤️', heartActive: '💓' },
-  { name: '相濡以沫', pts: 3500, heart: '💓', heartActive: '💞' },
+  { name: '青梅竹马', pts: 600,  moves: 30, heart: '🤍', heartActive: '💗' },
+  { name: '日久生情', pts: 1400, moves: 35, heart: '💗', heartActive: '💕' },
+  { name: '渐入佳境', pts: 2600, moves: 35, heart: '💕', heartActive: '❤️' },
+  { name: '耳鬓厮磨', pts: 4200, moves: 40, heart: '❤️', heartActive: '💓' },
+  { name: '相濡以沫', pts: 6500, moves: 40, heart: '💓', heartActive: '💞' },
 ];
 
 // ─────────────────────────────────────────────
 //  STATE
 // ─────────────────────────────────────────────
-let board = [];          // ROWS x COLS: null | { type, special }
+let board = [];          // ROWS x COLS: null | { type, special, locked }
 let selected = null;     // {r,c}
 let totalScore = 0;
 let currentLevel = 0;
 let animating = false;
 let activeTileTypes = [];
+let movesLeft = 30;      // steps remaining this level
+let comboMultiplier = 1; // streak multiplier
 
 // special types: 'heart', 'fuji', 'sakura', 'book'
 const SPECIAL_EMOJI = { heart:'❤️', fuji:'🗻', sakura:'🌸', book:'📖' };
@@ -376,6 +394,8 @@ TILE_TYPES.forEach(t => {
 // ─────────────────────────────────────────────
 function init() {
   activeTileTypes = [...TILE_TYPES]; // use all 7 tiles
+  movesLeft = LEVELS[currentLevel].moves;
+  comboMultiplier = 1;
   board = [];
   for (let r = 0; r < ROWS; r++) {
     board[r] = [];
@@ -394,6 +414,7 @@ function init() {
     }
   }
   selected = null;
+  document.getElementById('moves-left').textContent = movesLeft;
   renderBoard();
   renderSidePanel();
 }
@@ -433,7 +454,7 @@ function renderBoard() {
 
       // Compute what content key this cell should have
       const newKey = tile
-        ? (tile.special ? `special:${tile.special}` : `tile:${tile.type}`)
+        ? (tile.special ? `special:${tile.special}` : `tile:${tile.type}`) + (tile.locked ? ':L' : '')
         : 'empty';
       const selKey = (selected && selected.r === r && selected.c === c) ? 'sel' : '';
       const fullKey = newKey + '|' + selKey;
@@ -449,6 +470,9 @@ function renderBoard() {
 
       // Update selected state
       cell.classList.toggle('selected', !!(selected && selected.r === r && selected.c === c));
+
+      // Update locked state
+      cell.classList.toggle('locked', !!(tile && tile.locked));
 
       if (!tile) {
         cell.classList.remove('special');
@@ -560,6 +584,7 @@ function findAllMatches() {
 
 function sameNormal(r1,c1,r2,c2) {
   const a = board[r1][c1], b = board[r2][c2];
+  // Locked tiles can form matches but cannot be moved by player
   return a && b && !a.special && !b.special && a.type === b.type;
 }
 
@@ -633,14 +658,28 @@ async function attemptSwap(r1, c1, r2, c2) {
   const tileA = board[r1][c1];
   const tileB = board[r2][c2];
 
+  // Locked tiles cannot be moved
+  if ((tileA && tileA.locked) || (tileB && tileB.locked)) {
+    animating = false;
+    return;
+  }
+
   // Book special: book + any, or book + book
   if (tileA && tileA.special === 'book') {
+    movesLeft--;
+    document.getElementById('moves-left').textContent = movesLeft;
     await doBookSwap(r1,c1, r2,c2, tileB, false);
+    comboMultiplier = 1;
+    checkOutOfMoves();
     animating = false;
     return;
   }
   if (tileB && tileB.special === 'book') {
+    movesLeft--;
+    document.getElementById('moves-left').textContent = movesLeft;
     await doBookSwap(r2,c2, r1,c1, tileA, false);
+    comboMultiplier = 1;
+    checkOutOfMoves();
     animating = false;
     return;
   }
@@ -652,14 +691,18 @@ async function attemptSwap(r1, c1, r2, c2) {
 
   const matches = findAllMatches();
   if (matches.length === 0) {
-    // Swap back
+    // Swap back — no move consumed
     swapCells(r1,c1,r2,c2);
     renderBoard();
     animating = false;
     return;
   }
+  movesLeft--;
+  document.getElementById('moves-left').textContent = movesLeft;
   await processMatches(matches, false);
+  comboMultiplier = 1; // reset after cascade ends
   await checkDeadlock();
+  checkOutOfMoves();
   animating = false;
 }
 
@@ -701,22 +744,48 @@ async function processMatches(matches, fromSpecial) {
     const extraCells = triggerSpecials(matches);
     const allToRemove = dedup([...matches, ...extraCells]);
 
-    // Animate pop
-    allToRemove.forEach(({r,c}) => {
+    // Separate locked tiles: unlock only, don't remove
+    const lockedInMatch = allToRemove.filter(({r,c}) => board[r][c] && board[r][c].locked);
+    const actualRemove = allToRemove.filter(({r,c}) => !(board[r][c] && board[r][c].locked));
+
+    // Animate pop for removed tiles; flash for unlocked locked tiles
+    actualRemove.forEach(({r,c}) => {
       const el = getCellEl(r,c);
       if (el) el.classList.add('popping');
     });
+    lockedInMatch.forEach(({r,c}) => {
+      const el = getCellEl(r,c);
+      if (el) { el.style.transition = 'box-shadow 0.3s'; el.style.boxShadow = '0 0 0 4px #ffd700'; setTimeout(()=>{ if(el) el.style.boxShadow=''; }, 600); }
+    });
     await sleep(320);
 
-    // Score
-    const pts = allToRemove.length * 10;
+    // Unlock locked tiles that are part of the match (but keep them on board)
+    lockedInMatch.forEach(({r,c}) => {
+      board[r][c].locked = false;
+    });
+
+    // Unlock adjacent locked tiles (neighbors of actually-removed cells)
+    actualRemove.forEach(({r,c}) => {
+      [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc]) => {
+        if (nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&board[nr][nc]&&board[nr][nc].locked) {
+          board[nr][nc].locked = false;
+        }
+      });
+    });
+
+    // Score only counts actually removed tiles
+    const pts = actualRemove.length * 10 * comboMultiplier;
     totalScore += pts;
     document.getElementById('total-score').textContent = totalScore;
-    document.getElementById('combo-label').textContent = allToRemove.length;
-    spawnParticles(allToRemove);
+    document.getElementById('combo-label').textContent = comboMultiplier;
+    if (comboMultiplier >= 2) {
+      showFloatingHint(`🔥 连击${comboMultiplier}次，+${pts}分 Bonus！`, 1200);
+    }
+    comboMultiplier++;
+    spawnParticles(actualRemove);
 
-    // Remove matched cells
-    allToRemove.forEach(({r,c}) => { board[r][c] = null; });
+    // Remove only non-locked matched cells
+    actualRemove.forEach(({r,c}) => { board[r][c] = null; });
 
     // Place power-ups at their positions (only if not fromSpecial and cell was removed)
     powerUpsToCreate.forEach(({r,c,sp}) => {
@@ -802,6 +871,13 @@ async function doBookSwap(bookR, bookC, targetR, targetC, targetTile, fromSpecia
   document.getElementById('total-score').textContent = totalScore;
   spawnParticles(cellsToRemove);
 
+  cellsToRemove.forEach(({r,c}) => {
+    [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc]) => {
+      if (nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&board[nr][nc]&&board[nr][nc].locked) {
+        board[nr][nc].locked = false;
+      }
+    });
+  });
   cellsToRemove.forEach(({r,c}) => { board[r][c] = null; });
   dropTiles();
   fillEmpty();
@@ -846,13 +922,42 @@ function checkLevelUp() {
   while (currentLevel < LEVELS.length && totalScore >= LEVELS[currentLevel].pts) {
     const lv = LEVELS[currentLevel];
     if (currentLevel < LEVELS.length - 1) {
-      showModal(`🎉 恭喜！`, `恭喜，你们的亲密度增加啦！\n解锁成就：${LEVELS[currentLevel+1]?.name || lv.name}`);
+      currentLevel++;
+      movesLeft = LEVELS[currentLevel].moves;
+      document.getElementById('moves-left').textContent = movesLeft;
+      // Unlock all locked tiles on level up
+      for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
+        if (board[r][c] && board[r][c].locked) board[r][c].locked = false;
+      }
+      showModal(`🎉 恭喜！`, `恭喜，你们的亲密度增加啦！\n解锁成就：${LEVELS[currentLevel].name}\n\n获得 ${LEVELS[currentLevel].moves} 步继续游戏！`);
+      // Spawn locked tiles for Lv3+ (after unlocking 日久生情 = level index 1 → entering level index 2)
+      if (currentLevel >= 2) {
+        spawnLockedTiles();
+        if (currentLevel === 2) showFloatingHint('🔒 新挑战：新增🔒格，解锁它！', 2500);
+      }
     } else {
       showModal(`💞 最终成就`, `恭喜，你们会相伴到老😊\n\n已解锁全部亲密度成就！`, true);
+      break;
     }
-    currentLevel = Math.min(currentLevel + 1, LEVELS.length - 1);
-    if (currentLevel >= LEVELS.length - 1 && totalScore >= LEVELS[LEVELS.length-1].pts) break;
   }
+}
+
+function checkOutOfMoves() {
+  if (movesLeft > 0) return;
+  if (totalScore >= LEVELS[currentLevel].pts) return; // already passed
+  showModal(`💔 步数用尽`, `这一关还差 ${LEVELS[currentLevel].pts - totalScore} 分\n再试一次吧！`, false, true);
+}
+
+function spawnLockedTiles() {
+  // Place 3-5 random locked tiles on normal (non-special) cells
+  const count = 3 + Math.floor(Math.random() * 3);
+  const candidates = [];
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
+    if (board[r][c] && !board[r][c].special && !board[r][c].locked) candidates.push([r,c]);
+  }
+  shuffleArr(candidates);
+  candidates.slice(0, count).forEach(([r,c]) => { board[r][c].locked = true; });
+  renderBoard();
 }
 
 // ─────────────────────────────────────────────
@@ -898,11 +1003,14 @@ function findRuns() {
 // ─────────────────────────────────────────────
 //  MODAL
 // ─────────────────────────────────────────────
-function showModal(title, text, showRestart = false) {
+function showModal(title, text, showRestart = false, showRetry = false) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-text').textContent = text;
   const restartBtn = document.getElementById('modal-restart-btn');
   restartBtn.style.display = showRestart ? 'inline-block' : 'none';
+  const retryBtn = document.getElementById('modal-retry-btn');
+  retryBtn.style.display = showRetry ? 'inline-block' : 'none';
+  document.getElementById('modal-btn').style.display = showRetry ? 'none' : 'inline-block';
   document.getElementById('modal-overlay').classList.add('show');
 }
 function closeModal() {
@@ -915,9 +1023,31 @@ function resetGame() {
   currentLevel = 0;
   animating = false;
   selected = null;
+  comboMultiplier = 1;
   document.getElementById('total-score').textContent = '0';
-  document.getElementById('combo-label').textContent = '0';
+  document.getElementById('combo-label').textContent = '1';
   init();
+}
+
+function retryLevel() {
+  closeModal();
+  animating = false;
+  selected = null;
+  comboMultiplier = 1;
+  // Reset score back to the start of the current level
+  totalScore = currentLevel === 0 ? 0 : LEVELS[currentLevel - 1].pts;
+  document.getElementById('total-score').textContent = totalScore;
+  document.getElementById('combo-label').textContent = '1';
+  movesLeft = LEVELS[currentLevel].moves;
+  document.getElementById('moves-left').textContent = movesLeft;
+  // Rebuild board keeping score/level but fresh tiles
+  activeTileTypes = [...TILE_TYPES];
+  board = [];
+  for (let r=0;r<ROWS;r++) { board[r]=[]; for(let c=0;c<COLS;c++) board[r][c]=randomTile(); }
+  for (let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) { let t=0; while(hasMatchAt(r,c)&&t++<20) board[r][c]=randomTile(); }
+  if (currentLevel >= 2) spawnLockedTiles();
+  renderBoard();
+  renderSidePanel();
 }
 
 // ─────────────────────────────────────────────
@@ -937,6 +1067,18 @@ function spawnParticles(cells) {
     document.body.appendChild(p);
     setTimeout(() => p.remove(), 1000);
   });
+}
+
+function showFloatingHint(text, duration = 1500) {
+  const el = document.createElement('div');
+  el.textContent = text;
+  el.style.cssText = 'position:fixed;top:42%;left:50%;transform:translate(-50%,-50%);background:rgba(192,57,90,0.92);color:#fff;padding:12px 24px;border-radius:20px;font-size:1rem;font-weight:bold;z-index:9999;text-align:center;pointer-events:none;animation:floatHint 0.3s ease-out;white-space:nowrap;';
+  document.body.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'opacity 0.4s';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 400);
+  }, duration);
 }
 
 // ─────────────────────────────────────────────
